@@ -7,6 +7,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import spacy
 from taaled import ld
+import json
 import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import sentiwordnet as swn
@@ -23,6 +24,7 @@ import gc
 from pydub import AudioSegment
 import os
 import logging
+import librosa
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -110,135 +112,164 @@ def embed_text(text, tokenizer, model):
 
 # Helper functions
 def pausing_behavior(audio, device: str = "cpu"):
-  """
-  audio is a column of a dataset with audio at 16 000 Hz sampling rate
-  """
-  compute_type = "float32"
-  batch_size = 16
+    """
+    audio is a column of a dataset with audio at 16 000 Hz sampling rate
+    """
+    logging.info("Starting pausing_behavior function")
+    compute_type = "float32"
+    batch_size = 16
 
-  # 1. Transcribe with original whisper (batched)
-  model = whisperx.load_model("large-v2", device, compute_type="float32")
+    # 1. Transcribe with original whisper (batched)
+    logging.info("Loading Whisper model")
+    model = whisperx.load_model("large-v2", device, compute_type="float32")
 
-  transcribe_result = model.transcribe(audio, batch_size=batch_size)
+    logging.info("Transcribing audio")
+    try:
+        transcribe_result = model.transcribe(audio, batch_size=batch_size)
+    except Exception as e:
+        logging.error(f"Error in transcribing audio: {str(e)}", exc_info=True)
+        return {"error": str(e)}
 
-  # delete model if low on GPU resources
-  del model
-  gc.collect();
-  torch.cuda.empty_cache();
+    # delete model if low on GPU resources
+    del model
+    gc.collect()
+    torch.cuda.empty_cache()
+    logging.info("Whisper model deleted and GPU cache cleared")
 
-  # 2. Align whisper output
-  model_a, metadata = whisperx.load_align_model(language_code=transcribe_result["language"], device=device)
-  alignment_result = whisperx.align(transcribe_result["segments"], model_a, metadata, audio, device, return_char_alignments=False)
+    # 2. Align whisper output
+    logging.info("Loading alignment model")
+    model_a, metadata = whisperx.load_align_model(language_code=transcribe_result["language"], device=device)
+    logging.info("Aligning transcription")
+    alignment_result = whisperx.align(transcribe_result["segments"], model_a, metadata, audio, device, return_char_alignments=False)
 
-  # delete model if low on GPU resources
-  del model_a
-  gc.collect()
-  torch.cuda.empty_cache();
+    # delete model if low on GPU resources
+    del model_a
+    gc.collect()
+    torch.cuda.empty_cache()
+    logging.info("Alignment model deleted and GPU cache cleared")
 
-  word_timings = []
+    word_timings = []
 
-  word_segments = alignment_result["word_segments"]
-  string_index = 0
-  for i, (word_1_info, word_2_info) in enumerate(zip(word_segments[:-1], word_segments[1:])):
-      gap_duration = word_2_info["start"] - word_1_info["end"]
-      word_timings.append({
-          "word1": word_1_info,
-          "word1_index": i,
-          "word1_string_index": string_index,
-          "word2": word_2_info,
-          "word2_string_index": string_index + len(word_1_info["word"]) + 1,
-          "gap_duration": gap_duration,
-      })
-      # Add current word length and space from next word
-      string_index += len(word_1_info["word"]) + 1
+    logging.info("Processing word timings")
+    word_segments = alignment_result["word_segments"]
+    string_index = 0
+    for i, (word_1_info, word_2_info) in enumerate(zip(word_segments[:-1], word_segments[1:])):
+        gap_duration = word_2_info["start"] - word_1_info["end"]
+        word_timings.append({
+            "word1": word_1_info,
+            "word1_index": i,
+            "word1_string_index": string_index,
+            "word2": word_2_info,
+            "word2_string_index": string_index + len(word_1_info["word"]) + 1,
+            "gap_duration": gap_duration,
+        })
+        # Add current word length and space from next word
+        string_index += len(word_1_info["word"]) + 1
 
-  # Pause behavior
-  # Pause duration used in https://doi.org/10.1016/j.jcomdis.2022.106214
-  DEFAULT_PAUSE_THRESHOLD_SECONDS = 0.2
+    # Pause behavior
+    # Pause duration used in https://doi.org/10.1016/j.jcomdis.2022.106214
+    DEFAULT_PAUSE_THRESHOLD_SECONDS = 0.2
 
-  def get_pauses(word_timings, pause_threshold = DEFAULT_PAUSE_THRESHOLD_SECONDS):
-    return filter(lambda gap: gap["gap_duration"] > DEFAULT_PAUSE_THRESHOLD_SECONDS, word_timings)
+    def get_pauses(word_timings, pause_threshold = DEFAULT_PAUSE_THRESHOLD_SECONDS):
+        return filter(lambda gap: gap["gap_duration"] > pause_threshold, word_timings)
 
-  pauses = list(get_pauses(word_timings))
+    logging.info("Calculating pauses")
+    pauses = list(get_pauses(word_timings))
+    logging.info(f"Found {len(pauses)} pauses")
 
-  word_timings_float = np.fromiter((timing["gap_duration"] for timing in word_timings), dtype=np.float32)
-  statistical_pause_threshold = np.mean(word_timings_float) + np.std(word_timings_float)
-  pauses_by_statistical_threshold = list(get_pauses(word_timings, statistical_pause_threshold))
+    word_timings_float = np.fromiter((timing["gap_duration"] for timing in word_timings), dtype=np.float32)
+    statistical_pause_threshold = np.mean(word_timings_float) + np.std(word_timings_float)
+    logging.info(f"Statistical pause threshold: {statistical_pause_threshold}")
+    pauses_by_statistical_threshold = list(get_pauses(word_timings, statistical_pause_threshold))
+    logging.info(f"Found {len(pauses_by_statistical_threshold)} pauses using statistical threshold")
 
-  nlp = spacy.load("en_core_web_sm")
+    logging.info("Loading spaCy model")
+    nlp = spacy.load("en_core_web_sm")
 
-  def get_words(result):
-    for segment in result["segments"]:
-      for word in segment["words"]:
-        yield word["word"]
+    def get_words(result):
+        for segment in result["segments"]:
+            for word in segment["words"]:
+                yield word["word"]
 
-  full_transcript = " ".join(get_words(alignment_result)).strip()
-  full_transcript
+    full_transcript = " ".join(get_words(alignment_result)).strip()
+    logging.info(f"Full transcript length: {len(full_transcript)} characters")
 
-  doc = nlp(full_transcript)
+    logging.info("Processing transcript with spaCy")
+    doc = nlp(full_transcript)
 
-  pauses_part_of_speech = defaultdict(int)
-  pause_index = 0
+    logging.info("Analyzing pauses by part of speech")
+    pauses_part_of_speech = defaultdict(int)
+    pause_index = 0
 
-  string_index = 0
-  for i, token in enumerate(doc):
-    print(i), print(token), print(token.idx)
-    # Find token corresponding to second word index in pause
-    if token.idx != pauses[pause_index]["word2_string_index"]:
-      continue
-    pauses_part_of_speech[token.pos_] += 1
-    pause_index += 1
-    if pause_index >= len(pauses):
-      break
+    for i, token in enumerate(doc):
+        if token.idx == pauses[pause_index]["word2_string_index"]:
+            pauses_part_of_speech[token.pos_] += 1
+            pause_index += 1
+            if pause_index >= len(pauses):
+                break
 
-  pauses_part_of_speech_rate = {
-    key: value / len(pauses) for key, value in pauses_part_of_speech.items()
-  }
+    pauses_part_of_speech_rate = {
+        key: value / len(pauses) for key, value in pauses_part_of_speech.items()
+    }
+    logging.info(f"Pause part of speech rates: {pauses_part_of_speech_rate}")
 
-  sentence_start_indices_set = set(sentence[0].idx for sentence in doc.sents)
-  sentence_start_pauses = 0
+    logging.info("Analyzing sentence-initial pauses")
+    sentence_start_indices_set = set(sentence[0].idx for sentence in doc.sents)
+    sentence_start_pauses = sum(1 for pause in pauses if pause["word1_string_index"] in sentence_start_indices_set)
+    logging.info(f"Number of sentence-initial pauses: {sentence_start_pauses}")
 
-  for pause in pauses:
-    if pause["word1_string_index"] in sentence_start_indices_set:
-      sentence_start_pauses += 1
-  sentence_start_pauses
+    logging.info("Finding clauses")
+    clause_char_spans = []
+    added_verb_indices = set()
+    for token in doc:
+        if token.pos_ != "VERB" or token.i in added_verb_indices:
+            continue
+        added_verb_indices.add(token.i)
+        clause_start = next(token.lefts)
 
-  # Find clauses
-  clause_char_spans = []
-  added_verb_indices = set()
-  for token in doc:
-    if token.pos_ != "VERB" or token.i in added_verb_indices:
-      continue
-    added_verb_indices.add(token.i)
-    clause_start = next(token.lefts)
+        clause_end = token
+        for right_token in token.rights:
+            if right_token.pos_ == "VERB":
+                if any(right_token_left.dep_ == "nsubj" for right_token_left in right_token.lefts):
+                    break
+                added_verb_indices.add(right_token.i)
+            clause_end = right_token
+        clause_char_spans.append((clause_start.idx, clause_end.idx + len(clause_end)))
+    logging.info(f"Number of clauses found: {len(clause_char_spans)}")
 
-    clause_end = token
-    for right_token in token.rights:
-      if right_token.pos_ == "VERB":
-        if any(right_token_left.dep_ == "nsubj" for right_token_left in right_token.lefts):
-          break
-        added_verb_indices.add(right_token.i)
-      clause_end = right_token
-    clause_char_spans.append((clause_start.idx, clause_end.idx + len(clause_end)))
-  clause_char_spans
+    logging.info("Analyzing clause-initial pauses")
+    clause_start_char_indices = set(span[0] for span in clause_char_spans)
+    clause_initial_pause_count = sum(1 for pause in pauses if pause["word1_string_index"] in clause_start_char_indices)
+    logging.info(f"Number of clause-initial pauses: {clause_initial_pause_count}")
 
-  clause_start_char_indices = set(span[0] for span in clause_char_spans)
-  clause_initial_pause_count = 0
-
-  for pause in pauses:
-    if pause["word1_string_index"] in clause_start_char_indices:
-      clause_initial_pause_count += 1
-
-  return {
-      "transcription_result": transcribe_result,
-      "doc": doc,
-      "alignment_result": alignment_result,
-      "pauses": pauses,
-      "pauses_by_statistical_threshold": pauses_by_statistical_threshold,
-      "pause_part_of_speech_rate": pauses_part_of_speech_rate,
-      "clause_char_spans": clause_char_spans,
-      "clause_initial_pause_count": clause_initial_pause_count,
-  }
+    logging.info("Pausing behavior analysis completed")
+    doc_serializable = [
+        {"text": token.text, "pos_": token.pos_, "idx": token.idx}
+        for token in doc
+    ]
+    
+    result = {
+        "transcription_text": transcribe_result.get('text', ''),
+        "alignment_segments": alignment_result.get('segments', []),
+        "doc": doc_serializable,
+        "pauses": pauses,
+        "pauses_by_statistical_threshold": pauses_by_statistical_threshold,
+        "pause_part_of_speech_rate": pauses_part_of_speech_rate,
+        "clause_char_spans": clause_char_spans,
+        "clause_initial_pause_count": clause_initial_pause_count,
+    }
+    
+    return result
+    # return {
+    #     "transcription_result": transcribe_result,
+    #     "doc": doc,
+    #     "alignment_result": alignment_result,
+    #     "pauses": pauses,
+    #     "pauses_by_statistical_threshold": pauses_by_statistical_threshold,
+    #     "pause_part_of_speech_rate": pauses_part_of_speech_rate,
+    #     "clause_char_spans": clause_char_spans,
+    #     "clause_initial_pause_count": clause_initial_pause_count,
+    # }
 
 @app.route('/ngram_repetition', methods=['POST'])
 def ngram_repetition():
@@ -490,57 +521,24 @@ def calculate_pausing_behavior():
 
     try:
         logging.info(f"Loading audio file: {audio_path}")
-        # Get the file extension
-        _, file_extension = os.path.splitext(audio_path)
-        file_extension = file_extension.lower()
-
-        # Load audio file based on its extension
-        if file_extension == '.wav':
-            audio = AudioSegment.from_wav(audio_path)
-        elif file_extension == '.mp3':
-            audio = AudioSegment.from_mp3(audio_path)
-        elif file_extension in ['.m4a', '.mp4']:
-            audio = AudioSegment.from_file(audio_path, "m4a")
-        elif file_extension == '.ogg':
-            audio = AudioSegment.from_ogg(audio_path)
-        elif file_extension == '.flac':
-            audio = AudioSegment.from_file(audio_path, "flac")
-        else:
-            return jsonify({'error': f'Unsupported file type: {file_extension}'}), 400
-
+        
+        # Load audio file using librosa
+        samples, sr = librosa.load(audio_path, sr=16000, mono=True)
         logging.info("Audio file loaded successfully")
 
-        # Ensure 16kHz sample rate
-        audio = audio.set_frame_rate(16000)
-        logging.info("Audio resampled to 16kHz")
+        # Ensure 16kHz sample rate (librosa.load already does this)
+        logging.info("Audio loaded at 16kHz and mono")
 
-        # Convert audio to numpy array
-        samples = np.array(audio.get_array_of_samples())
+        # Convert to float32 if not already (librosa.load typically returns float32)
+        samples = samples.astype(np.float32)
+        logging.info("Audio samples confirmed as float32")
         print(samples)
-        logging.info("Audio converted to numpy array")
 
         logging.info(f"Calculating pausing behavior using device: {device}")
         result = pausing_behavior(samples, device)
         logging.info("Pausing behavior calculation completed")
 
-        # Process the result for JSON serialization
-        processed_result = {
-            "transcription": result["transcription_result"]["text"],
-            "language": result["transcription_result"]["language"],
-            "pauses": [
-                {
-                    "word1": pause["word1"]["word"],
-                    "word2": pause["word2"]["word"],
-                    "gap_duration": pause["gap_duration"]
-                } for pause in result["pauses"]
-            ],
-            "pause_part_of_speech_rate": result["pause_part_of_speech_rate"],
-            "clause_initial_pause_count": result["clause_initial_pause_count"],
-            "total_pauses": len(result["pauses"]),
-            "total_words": len(list(result["alignment_result"]["word_segments"]))
-        }
-
-        return jsonify(processed_result)
+        return jsonify(result)
 
     except Exception as e:
         logging.error(f"Error in calculate_pausing_behavior: {str(e)}", exc_info=True)

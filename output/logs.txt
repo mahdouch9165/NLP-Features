@@ -1,122 +1,52 @@
 Building container...
+#0 building with "desktop-linux" instance using docker driver
+
 #1 [internal] load build definition from Dockerfile
-#1 sha256:d27c63662e10b12c46f95399f009261a453f606df58ce1e7746efda092a6b065
-#1 transferring dockerfile: 129B done
+#1 transferring dockerfile: 802B 0.0s done
 #1 DONE 0.0s
 
-#2 [internal] load .dockerignore
-#2 sha256:b75234fa22d81633daf0e820097c2621187ef98ba69de4ccbfc40900ce13a208
-#2 transferring context: 2B done
-#2 DONE 0.0s
+#2 [internal] load metadata for docker.io/library/ubuntu:24.04
+#2 DONE 0.7s
 
-#3 [internal] load metadata for docker.io/library/ubuntu:24.04
-#3 sha256:c67b68fe12f690b152b49cfd4c7232ec0c91a65bdc30d97897daf428361b8eb6
-#3 DONE 0.6s
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
 
-#13 [1/9] FROM docker.io/library/ubuntu:24.04@sha256:dfc10878be8d8fc9c61cbff33166cb1d1fe44391539243703c72766894fa834a
-#13 sha256:03b4a4f0e8f708907f9d6ebb8cd7444b04b72f5e4499898bd661abb98663b254
-#13 resolve docker.io/library/ubuntu:24.04@sha256:dfc10878be8d8fc9c61cbff33166cb1d1fe44391539243703c72766894fa834a 0.0s done
-#13 DONE 0.0s
+#4 [1/9] FROM docker.io/library/ubuntu:24.04@sha256:dfc10878be8d8fc9c61cbff33166cb1d1fe44391539243703c72766894fa834a
+#4 DONE 0.0s
 
-#12 [internal] load build context
-#12 sha256:4f0e6ffc58210dbc052ec4dc96c2e88b6c1cf091131e4fb5937303c63d73f664
-#12 transferring context: 446.57kB 0.0s done
-#12 DONE 0.0s
+#5 [internal] load build context
+#5 transferring context: 23.55kB 0.0s done
+#5 DONE 0.0s
 
-#6 [4/9] WORKDIR /app
-#6 sha256:4b4c46ffda307c10765784d4fb589a23ca5f35051f8647a12087157bc080b7d9
+#6 [3/9] RUN git --version &&     which git
 #6 CACHED
 
-#5 [3/9] RUN git --version &&     which git
-#5 sha256:9b136e1e78a72344e1eae4372f92aa03ccdfcc63b6c90a7864158a2ee80ee4e8
-#5 CACHED
-
-#9 [7/9] RUN python3.11 -m spacy download en_core_web_sm
-#9 sha256:5d5e82362bb00e1207460076cfaa3d7b22edfbda2c14f532eb07bb450b5ac003
-#9 CACHED
-
-#4 [2/9] RUN apt-get update &&     apt-get install -y software-properties-common &&     add-apt-repository ppa:deadsnakes/ppa &&     apt-get update &&     apt-get install -y python3.11 python3.11-distutils python3.11-dev python3.11-venv     ffmpeg     git &&     python3.11 -m ensurepip &&     python3.11 -m pip install --upgrade pip
-#4 sha256:ccecd1957c8af952aabf1aadb5a121cef70c896dcbe0c346336c9dfd6866c499
-#4 CACHED
-
-#8 [6/9] RUN python3.11 -m pip install --no-cache-dir -r requirements.txt
-#8 sha256:a5970752c02d5fb00e55842b47b5b81b82ab998fcdfbf527474b5bf53712a359
-#8 CACHED
-
 #7 [5/9] COPY requirements.txt .
-#7 sha256:ad3908e5309f62b7807bc262539f750d2eb63d7bed20b953d23e317bc322ce93
 #7 CACHED
 
-#10 [8/9] RUN python3.11 -m pip install git+https://github.com/m-bain/whisperx.git
-#10 sha256:86aae468592e1d6a8184422632123998192fae78dfc4ae149a222ea3e65b9ef0
+#8 [2/9] RUN apt-get update &&     apt-get install -y software-properties-common &&     add-apt-repository ppa:deadsnakes/ppa &&     apt-get update &&     apt-get install -y python3.11 python3.11-distutils python3.11-dev python3.11-venv     ffmpeg     git &&     python3.11 -m ensurepip &&     python3.11 -m pip install --upgrade pip
+#8 CACHED
+
+#9 [4/9] WORKDIR /app
+#9 CACHED
+
+#10 [6/9] RUN python3.11 -m pip install --no-cache-dir -r requirements.txt
 #10 CACHED
 
-#11 [9/9] COPY . .
-#11 sha256:ac8e234f56b9435a196d378c12bd9860d0c44ff505dcb394e9e14a4183100a2a
-#11 DONE 0.1s
+#11 [7/9] RUN python3.11 -m spacy download en_core_web_sm
+#11 CACHED
+
+#12 [8/9] RUN python3.11 -m pip install git+https://github.com/m-bain/whisperx.git
+#12 CACHED
+
+#13 [9/9] COPY . .
+#13 DONE 0.1s
 
 #14 exporting to image
-#14 sha256:e8c613e07b0b7ff33893b694f7759a10d42e180f2b4dc349fb57dc6b71dcab00
 #14 exporting layers 0.0s done
-#14 writing image sha256:91c067d5f2b660607d19256edbc24db088d500c732818333a9fc689c40543797 done
+#14 writing image sha256:152a3dd74c34290df65a7ce7acedbd4c38e3ede724b4d1216ea09826e4d83f19 done
 #14 naming to docker.io/library/nlp-app done
-#14 DONE 0.0s
-
-Use 'docker scan' to run Snyk tests against images to find vulnerabilities and learn how to fix them
+#14 DONE 0.1s
 Build successful.
 Please enter the port number you would like to assign to the Docker container: 
-Attempting to start container on port 6009...
-Container started successfully on port 6009.
-Waiting for container to initialize...
-Container is ready.
-
-Available functions:
-1. Action Verb Rate
-2. Brunet's Index
-3. Cosine Repetition
-4. Honore Index
-5. Lexical Diversity
-6. Lexical Richness Part of Speech Rate
-7. Negative Adverb Rate
-8. Ngram Repetition
-9. Pausing Behavior Part of Speech
-10. Exit
-Enter the number of the function you want to run:
-Running 'Pausing Behavior Part of Speech' function...
-Please enter the relative path of the input audio file (supported formats: wav, mp3, m4a, mp4, ogg, flac):
-Failed to get response from the server.
-/usr/local/lib/python3.11/dist-packages/pyannote/audio/core/io.py:43: UserWarning: torchaudio._backend.set_audio_backend has been deprecated. With dispatcher enabled, this function is no-op. You can remove the function call.
-You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
-Special tokens have been added in the vocabulary, make sure the associated word embeddings are fine-tuned or trained.
-INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
- * Running on all addresses (0.0.0.0)
- * Running on http://127.0.0.1:5000
- * Running on http://172.17.0.2:5000
-INFO:werkzeug:[33mPress CTRL+C to quit[0m
-INFO:werkzeug:172.17.0.1 - - [17/Sep/2024 02:44:17] "[33mHEAD / HTTP/1.1[0m" 404 -
-INFO:root:Loading audio file: ./functions/.././input/audio.wav
-INFO:root:Audio file loaded successfully
-INFO:root:Audio resampled to 16kHz
-INFO:root:Audio converted to numpy array
-INFO:root:Calculating pausing behavior using device: cpu
-
-Available functions:
-1. Action Verb Rate
-2. Brunet's Index
-3. Cosine Repetition
-4. Honore Index
-5. Lexical Diversity
-6. Lexical Richness Part of Speech Rate
-7. Negative Adverb Rate
-8. Ngram Repetition
-9. Pausing Behavior Part of Speech
-10. Exit
-Enter the number of the function you want to run:
-Exiting the program.
-Stopping and removing Docker container...
-03a0710163609fa92b8602d8a3b0a5f5ff0754976e9faeab08d2692e74d5e130
-03a0710163609fa92b8602d8a3b0a5f5ff0754976e9faeab08d2692e74d5e130
-Removing Docker image...
-Untagged: nlp-app:latest
-Deleted: sha256:91c067d5f2b660607d19256edbc24db088d500c732818333a9fc689c40543797
-Script execution completed.
